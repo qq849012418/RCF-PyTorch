@@ -59,7 +59,7 @@ def multi_scale_test(model, test_loader, test_list, save_dir):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Testing')
     parser.add_argument('--gpu', default='0', type=str, help='GPU ID')
-    parser.add_argument('--checkpoint', default=None, type=str, help='path to latest checkpoint')
+    parser.add_argument('--checkpoint', default='bsds500_pascal_model.pth', type=str, help='path to latest checkpoint')
     parser.add_argument('--save-dir', help='output folder', default='results/RCF')
     parser.add_argument('--dataset', help='root folder of dataset', default='data/HED-BSDS')
     args = parser.parse_args()
