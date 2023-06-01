@@ -102,7 +102,9 @@ def medical_image_test_multi(model, test_img, save_dir):
     model.eval()
     if not osp.isdir(save_dir):
         os.makedirs(save_dir)
-    scale = [0.5, 1, 1.5]
+    # scale = [0.5, 1, 1.5]
+    scale = [1, 2]
+
     # 读取.nii.gz文件
     image = sitk.ReadImage(test_img)
 
@@ -121,14 +123,39 @@ def medical_image_test_multi(model, test_img, save_dir):
         slice_array = cv2.convertScaleAbs(slice_array, alpha=(255.0/slice_array.max()))
         # 将NumPy数组转换为OpenCV格式
         img_cv = cv2.cvtColor(slice_array, cv2.COLOR_GRAY2RGB)
+        # # 提高对比度的参数
+        # alpha = 1.5  # 对比度增益
+        # beta = 0  # 亮度增益
+        # # 对图像应用对比度和亮度调整
+        # img_cv = cv2.convertScaleAbs(img_cv0, alpha=alpha, beta=beta)
+        # # 应用直方图均衡化
+        # # 将图像拆分为三个通道
+        # b, g, r = cv2.split(img_cv0)
+        #
+        # # 对每个通道应用直方图均衡化
+        # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        # equalized_b = clahe.apply(b)
+        # equalized_g = clahe.apply(g)
+        # equalized_r = clahe.apply(r)
+        #
+        # # 合并通道
+        # img_cv = cv2.merge((equalized_b, equalized_g, equalized_r))
+
 
         slice_array = torch.from_numpy(img_cv).cuda()
-        H, W,C = slice_array.shape
-        mean = np.array([104.00698793, 116.66876762, 122.67891434], dtype=np.float32)
+        H, W, C = slice_array.shape
+        r, g, b = cv2.split(img_cv)
+        # 计算每个通道的均值
+        mean_b = np.mean(b)
+        mean_g = np.mean(g)
+        mean_r = np.mean(r)
+        mean = np.array([mean_r, mean_g, mean_b], dtype=np.float32)
+        # mean = np.array([104.00698793, 116.66876762, 122.67891434], dtype=np.float32) #from RCF BSDS_Dataset
         ms_fuse = np.zeros((H, W), np.float32)
         for k in range(len(scale)):
-            im_ = cv2.resize(img_cv, None, fx=scale[k], fy=scale[k], interpolation=cv2.INTER_LINEAR)
-            im_ = (im_ - mean).transpose((2, 0, 1))
+            im0_ = cv2.resize(img_cv, None, fx=scale[k], fy=scale[k], interpolation=cv2.INTER_LINEAR)
+            im1_ = im0_ - mean
+            im_ = im1_.transpose((2, 0, 1))
             results = model(torch.unsqueeze(torch.from_numpy(im_).to(torch.float32).cuda(), 0))
             fuse_res = torch.squeeze(results[-1].detach()).cpu().numpy()
             fuse_res = cv2.resize(fuse_res, (W, H), interpolation=cv2.INTER_LINEAR)
@@ -140,8 +167,14 @@ def medical_image_test_multi(model, test_img, save_dir):
         ms_fuse = (ms_fuse * 255).astype(np.uint8)
 
         # 显示当前横截面
-        cv2.imshow("Slice {}".format(z), ms_fuse)
-        cv2.waitKey(0)  # 按任意键停止显示当前横截面
+        # cv2.imshow("Slice {} ori".format(z), img_cv)
+        # cv2.waitKey(0)  # 按任意键停止显示当前横截面
+        # cv2.imshow("Slice {} ori2".format(z), im0_)
+        # cv2.waitKey(0)  # 按任意键停止显示当前横截面
+        # cv2.imshow("Slice {} preprocess".format(z), im1_)
+        # cv2.waitKey(0)  # 按任意键停止显示当前横截面
+        # cv2.imshow("Slice {} final".format(z), ms_fuse)
+        # cv2.waitKey(0)  # 按任意键停止显示当前横截面
 
     cv2.destroyAllWindows()  # 关闭所有OpenCV窗口
     new_filename = test_img.replace('.nii.gz', '_cnnedge.mat')
@@ -182,4 +215,5 @@ if __name__ == '__main__':
     print('Performing the testing...')
     # single_scale_test(model, test_loader, test_list, args.save_dir)
     # multi_scale_test(model, test_loader, test_list, args.save_dir)
-    medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/XH_01/XH_01.nii.gz', args.save_dir)
+    # medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/XH_01/XH_01.nii.gz', args.save_dir)
+    medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/Study_54/Study_54.nii.gz', args.save_dir)
