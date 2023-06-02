@@ -182,10 +182,11 @@ if __name__ == '__main__':
             logger.info("=> loading checkpoint from '{}'".format(args.resume))
             checkpoint = torch.load(args.resume)
             print(checkpoint.keys())
-            model.load_state_dict(checkpoint['state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
-            args.start_epoch = checkpoint['epoch'] + 1
+            model.load_state_dict(checkpoint)#from test.py
+            # model.load_state_dict(checkpoint['state_dict'])
+            # optimizer.load_state_dict(checkpoint['optimizer'])
+            # lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+            # args.start_epoch = checkpoint['epoch'] + 1
             logger.info("=> checkpoint loaded")
         else:
             logger.info("=> no checkpoint found at '{}'".format(args.resume))

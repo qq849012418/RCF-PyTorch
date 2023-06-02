@@ -65,7 +65,7 @@ class Study_Dataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         if self.split == 'train':
             img_file, label_file = self.file_list[index].split()
-            label = cv2.imread(osp.join(self.root, label_file), 0)
+            label = cv2.imread(label_file, 0)
             label = np.array(label, dtype=np.float32)
             label = label[np.newaxis, :, :]
             label[label == 0] = 0
@@ -74,7 +74,7 @@ class Study_Dataset(torch.utils.data.Dataset):
         else:
             img_file = self.file_list[index].rstrip()
 
-        img = cv2.imread(osp.join(self.root, img_file))
+        img = cv2.imread(img_file)
         img = np.array(img, dtype=np.float32)
         img = (img - self.mean).transpose((2, 0, 1))
 
