@@ -1,4 +1,7 @@
+import datetime
 import os
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
 import numpy as np
 import os.path as osp
 import cv2
@@ -16,93 +19,13 @@ import scipy.io as sio
 
 import time
 
-def single_scale_test(model, test_loader, test_list, save_dir):
-    model.eval()
-    if not osp.isdir(save_dir):
-        os.makedirs(save_dir)
-    for idx, image in enumerate(test_loader):
-        image = image.cuda()
-        _, _, H, W = image.shape
-        results = model(image)
-        all_res = torch.zeros((len(results), 1, H, W))
-        for i in range(len(results)):
-          all_res[i, 0, :, :] = results[i]
-        filename = osp.splitext(test_list[idx])[0]
-        torchvision.utils.save_image(1 - all_res, osp.join(save_dir, '%s.jpg' % filename))
-        fuse_res = torch.squeeze(results[-1].detach()).cpu().numpy()
-        fuse_res = ((1 - fuse_res) * 255).astype(np.uint8)
-        cv2.imwrite(osp.join(save_dir, '%s_ss.png' % filename), fuse_res)
-        #print('\rRunning single-scale test [%d/%d]' % (idx + 1, len(test_loader)), end='')
-    print('Running single-scale test done')
+# 用于单独保存子图的函数 https://blog.csdn.net/qq_39645262/article/details/127190982
+def save_subfig(fig,ax,save_path,fig_name):
+    bbox = ax.get_tightbbox(fig.canvas.get_renderer()).expanded(1.02, 1.02)
+    extent = bbox.transformed(fig.dpi_scale_trans.inverted())
+    fig.savefig(os.path.join(save_path,fig_name), bbox_inches=extent)
 
-
-def multi_scale_test(model, test_loader, test_list, save_dir):
-    model.eval()
-    if not osp.isdir(save_dir):
-        os.makedirs(save_dir)
-    scale = [0.5, 1, 1.5]
-    for idx, image in enumerate(test_loader):
-        in_ = image[0].numpy().transpose((1, 2, 0))
-        _, _, H, W = image.shape
-        ms_fuse = np.zeros((H, W), np.float32)
-        for k in range(len(scale)):
-            im_ = cv2.resize(in_, None, fx=scale[k], fy=scale[k], interpolation=cv2.INTER_LINEAR)
-            im_ = im_.transpose((2, 0, 1))
-            results = model(torch.unsqueeze(torch.from_numpy(im_).cuda(), 0))
-            fuse_res = torch.squeeze(results[-1].detach()).cpu().numpy()
-            fuse_res = cv2.resize(fuse_res, (W, H), interpolation=cv2.INTER_LINEAR)
-            ms_fuse += fuse_res
-        ms_fuse = ms_fuse / len(scale)
-        ### rescale trick
-        # ms_fuse = (ms_fuse - ms_fuse.min()) / (ms_fuse.max() - ms_fuse.min())
-        filename = osp.splitext(test_list[idx])[0]
-        ms_fuse = ((1 - ms_fuse) * 255).astype(np.uint8)
-        cv2.imwrite(osp.join(save_dir, '%s_ms.png' % filename), ms_fuse)
-        #print('\rRunning multi-scale test [%d/%d]' % (idx + 1, len(test_loader)), end='')
-    print('Running multi-scale test done')
-
-#keenster 2023.5.8
-def medical_image_test(model, test_img, save_dir):
-    model.eval()
-    if not osp.isdir(save_dir):
-        os.makedirs(save_dir)
-    # 读取.nii.gz文件
-    image = sitk.ReadImage(test_img)
-    mean = np.array([104.00698793, 116.66876762, 122.67891434], dtype=np.float32)
-    # 获取图像的大小和像素间距
-    size = image.GetSize()
-    spacing = image.GetSpacing()
-    # 将图像数据转换为numpy数组
-    array = sitk.GetArrayFromImage(image)
-    # array = array.transpose(1,2,0)
-    for z in range(size[0]):
-        # 提取当前横截面的图像数据
-        slice_array = array[z,...]
-
-        # 将图像数据从浮点型转换为整型，并扩展亮度范围以在OpenCV中正确显示
-        slice_array = cv2.convertScaleAbs(slice_array, alpha=(255.0/slice_array.max()))
-        # 将NumPy数组转换为OpenCV格式
-        img_cv = cv2.cvtColor(slice_array, cv2.COLOR_GRAY2RGB)
-        img_cv =(img_cv - mean)
-        slice_array = torch.from_numpy(img_cv).cuda()
-        H, W,C = slice_array.shape
-        slice_array = slice_array.unsqueeze(0).permute(0, 3, 1, 2).to(torch.float32)
-        # slice_array=slice_array.reshape(1,C,H, W)
-        results = model(slice_array)
-        all_res = torch.zeros((len(results), 1, H, W))
-        for i in range(len(results)):
-            all_res[i, 0, :, :] = results[i]
-        fuse_res = torch.squeeze(results[-1].detach()).cpu().numpy()
-        fuse_res = (fuse_res * 255).astype(np.uint8)
-
-        # 显示当前横截面
-        cv2.imshow("Slice {}".format(z), fuse_res)
-        cv2.waitKey(0)  # 按任意键停止显示当前横截面
-
-    cv2.destroyAllWindows()  # 关闭所有OpenCV窗口
-    print('Running medical test done')
-
-def medical_image_test_multi(model, test_img, save_dir):
+def medical_image_test_multi(model, test_img, target_slice, save_dir,new_name):
     model.eval()
     if not osp.isdir(save_dir):
         os.makedirs(save_dir)
@@ -190,36 +113,40 @@ def medical_image_test_multi(model, test_img, save_dir):
     print(run_time)
     new_filename = test_img.replace('.nii.gz', '_cnnedge.mat')
 
-    # # 论文作图阶段
-    # fig = plt.figure()
-    # # 定义画布为1*1个划分，并在第1个位置上进行作图
-    # ax = fig.add_subplot(111)
-    # # 定义横纵坐标的刻度
-    # # ax.set_yticks(range(len(yLabel)))
-    # # ax.set_yticklabels(yLabel, fontproperties=font)
-    # # ax.set_xticks(range(len(xLabel)))
-    # # ax.set_xticklabels(xLabel)
-    # # 作图并选择热图的颜色填充风格，这里选择hot
-    # slice = 30
-    # im = ax.imshow(mat2save[:,:,slice], cmap=plt.cm.viridis)
+    # 论文作图阶段
+    fig = plt.figure()
+    # 定义画布为1*1个划分，并在第1个位置上进行作图
+    ax = fig.add_subplot(111)
+    # 定义横纵坐标的刻度
+    # ax.set_yticks(range(len(yLabel)))
+    # ax.set_yticklabels(yLabel, fontproperties=font)
+    # ax.set_xticks(range(len(xLabel)))
+    # ax.set_xticklabels(xLabel)
+    # 作图并选择热图的颜色填充风格，这里选择hot
+    slice = target_slice
+    plt.imshow(mat2save[:,:,slice], cmap=plt.cm.gray)
     # # 增加右侧的颜色刻度条
     # plt.colorbar(im)
     # # 增加标题
     # plt.title('probablity map of  slice: ' + str(slice), fontproperties=font)
-    # # show
-    # plt.show()
+    # show
+    plt.show()
+    plt.tight_layout()
+    plt.axis('off')
+    plt.xticks([])
 
-    sio.savemat(
-        new_filename,
-        {"CNNEdgeMap":mat2save})
+    plt.yticks([])
+    save_subfig(fig, ax, save_dir, new_name+ '.png')
+    # sio.savemat(
+    #     new_filename,
+    #     {"CNNEdgeMap":mat2save})
     print('Running medical test done')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Testing')
     parser.add_argument('--gpu', default='0', type=str, help='GPU ID')
-    parser.add_argument('--checkpoint', default='bsds500_pascal_model.pth', type=str, help='path to latest checkpoint')
-    # parser.add_argument('--checkpoint', default='results/RCF/PUMCH2401/checkpoint_epoch10.pth', type=str, help='path to latest checkpoint')
-    # parser.add_argument('--checkpoint', default='results/RCF/PUMCH2306/checkpoint_epoch10.pth', type=str, help='path to latest checkpoint')
+    # parser.add_argument('--checkpoint', default='bsds500_pascal_model.pth', type=str, help='path to latest checkpoint')
+    parser.add_argument('--checkpoint', default='results/RCF/PUMCH2401/checkpoint_epoch10.pth', type=str, help='path to latest checkpoint')
     # parser.add_argument('--checkpoint', default='results/RCF/Study_45-9/checkpoint_epoch10.pth', type=str, help='path to latest checkpoint')
     parser.add_argument('--save-dir', help='output folder', default='results/RCF')
     parser.add_argument('--dataset', help='root folder of dataset', default='data/HED-BSDS')
@@ -241,8 +168,8 @@ if __name__ == '__main__':
     if osp.isfile(args.checkpoint):
         print("=> loading checkpoint from '{}'".format(args.checkpoint))
         checkpoint = torch.load(args.checkpoint)
-        model.load_state_dict(checkpoint)
-        # model.load_state_dict(checkpoint['state_dict'])
+        # model.load_state_dict(checkpoint)
+        model.load_state_dict(checkpoint['state_dict'])
 
 
         print("=> checkpoint loaded")
@@ -253,7 +180,12 @@ if __name__ == '__main__':
     # single_scale_test(model, test_loader, test_list, args.save_dir)
     # multi_scale_test(model, test_loader, test_list, args.save_dir)
     # medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/PUMCH_006/PUMCH_006.nii.gz', args.save_dir)
-    # medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/Study_66/Study_66.nii.gz', args.save_dir)
+    # medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/Study_12/Study_12.nii.gz', 19, args.save_dir,'D1P12S20')
+    # medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/Study_42/Study_42.nii.gz', 34, args.save_dir,'D1P42S34')
+    # medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/Study_06/Study_06.nii.gz', 39, args.save_dir,'D1P06S39')
+    # medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/PUMCH_006/PUMCH_006.nii.gz', 10, args.save_dir,'D2P06S11')
+    medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/PUMCH_018/PUMCH_018.nii.gz', 11, args.save_dir,'D2P18S11')
+    # medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/PUMCH_024/PUMCH_024.nii.gz', 16, args.save_dir,'D2P24S17')
 
     # for patient_id in range(5,36,5):
     #     patient_name=str(patient_id).zfill(2)
@@ -262,7 +194,3 @@ if __name__ == '__main__':
     # for patient_id in range(6,36,6):
     #     patient_name=str(patient_id).zfill(3)
     #     medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/KeensterSSM/PUMCH_'+patient_name+'/PUMCH_'+patient_name+'.nii.gz', args.save_dir)
-
-    for patient_id in range(5,151,5):
-        patient_name=str(patient_id).zfill(3)
-        medical_image_test_multi(model, 'D:/Keenster/MatlabScripts/OPLL_FGPM/Dataset/QIANHOU_/QIANHOU_'+patient_name+'_ori.nii.gz', args.save_dir)

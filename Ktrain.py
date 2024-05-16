@@ -101,8 +101,8 @@ if __name__ == '__main__':
     parser.add_argument('--print-freq', default=200, type=int, help='print frequency')
     parser.add_argument('--gpu', default='0', type=str, help='GPU ID')
     parser.add_argument('--resume', default='bsds500_pascal_model.pth', type=str, help='path to latest checkpoint')
-    parser.add_argument('--save-dir', help='output folder', default='results/RCF')
-    parser.add_argument('--dataset', help='root folder of dataset', default='data/RCF_Study45-9')
+    parser.add_argument('--save-dir', help='output folder', default='results/RCF/PUMCH2401')
+    parser.add_argument('--dataset', help='root folder of dataset', default='data/RCF_PUMCH2401')
     args = parser.parse_args()
 
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
